@@ -29,4 +29,11 @@ public class UnitTest
     Assert.AreEqual((double)((5 + 2) + 7), engine.Run());
   }
 
+  [TestMethod]
+  public void HandleRepeatedBinaryOperator()
+  {
+    var source = @"1 + 10 / 2 * 2";
+    var engine = new Engine.Engine(source);
+    Assert.AreEqual((double)11, engine.Run());
+  }
 }

@@ -13,8 +13,7 @@ public abstract class Expr
 
 public class BinaryExpr: Expr
 {
-  public BinarySubExpr ValueA = new();
-  public BinarySubExpr ValueB = new();
+  public BinarySubExpr SubExpr = new();
 
   private readonly Dictionary<string, Lexer.BinaryOperatorType> OperatorMap = new()
   {
@@ -28,27 +27,43 @@ public class BinaryExpr: Expr
   {
     var root = new Lexer.BinaryExpr();
     var noMatchResult = new EvalResult(code, null);
+
+    // read first value outside of the loop
     {
-      var (newCode, node) = ValueA.Eval(code);
+      var (newCode, node) = SubExpr.Eval(code);
       if (node == null) return noMatchResult;
-      root.ValueA = node;
+      root.Operations.Add(new(node: node));
       code = newCode;
     }
-    code = SkipWhitespace(code);
+
+    for (var i = 0; true; i++)
     {
-      var op = OperatorMap.Keys.FirstOrDefault(op => code.StartsWith(op));
-      if (op == null) return noMatchResult;
-      root.Operator = OperatorMap[op];
-      code = code[op.Length..];
+      code = SkipWhitespace(code);
+      // read operator
+      {
+        var op = OperatorMap.Keys.FirstOrDefault(op => code.StartsWith(op));
+        var isFirstPass = i == 0;
+        if (op == null) 
+        {
+          // if only the first pass happened, no match, return null
+          // but if it's the second or third pass and no more operators,
+          // the expression is valid and we can return
+          if (isFirstPass) return noMatchResult;
+          else return new(code, root);
+        }
+        root.Operations.Add(new(op: OperatorMap[op]));
+        code = code[op.Length..];
+      }
+
+      code = SkipWhitespace(code);
+      // read second, third... value
+      {
+        var (newCode, node) = SubExpr.Eval(code);
+        if (node == null) return noMatchResult;
+        root.Operations.Add(new(node: node));
+        code = newCode;
+      }
     }
-    code = SkipWhitespace(code);
-    {
-      var (newCode, node) = ValueB.Eval(code);
-      if (node == null) return noMatchResult;
-      root.ValueB = node;
-      code = newCode;
-    }
-    return new(code, root);
   }
 }
 
