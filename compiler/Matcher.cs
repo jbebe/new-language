@@ -4,11 +4,35 @@ namespace NewLanguage.Engine.Matcher;
 
 public record EvalResult(string Code, Lexer.Node Node);
 
+//
+// Grammar:
+//  number := <decimal number regex>
+//  binary_operator := '+' | '-' | '*' | '/'
+//  binary_subexpr := (expression) | number
+//  variable := <alphanumeric string starting with [a-z]>
+//  declaration := variable: expression
+//  expression := binary_subexpr binary_operator binary_subexpr | number | variable | (expression)
+//  command := declaration | expression
+//  code := command | command , command [, command....]
+//
 public abstract class Expr
 {
   public abstract EvalResult Eval(string code);
   public static string SkipWhitespace(string code) =>
     new Regex(@"[\ \t\r\n]").Replace(code, "");
+
+  protected static EvalResult EvalGroup(Expr[] groups, string code)
+  {
+    var originalCode = code;
+    code = SkipWhitespace(code);
+    foreach (var group in groups)
+    {
+      var (newCode, root) = group.Eval(code);
+      if (root != null) return new(newCode, root);
+    }
+
+    return new(originalCode, null);
+  }
 }
 
 public class BinaryExpr: Expr
@@ -72,6 +96,7 @@ public class BinarySubExpr : Expr
   private readonly Expr[] Groups = new Expr[] {
     new BracketExpr(),
     new ValueExpr(),
+    new VariableExpr(),
   };
 
   public override EvalResult Eval(string code)
@@ -97,7 +122,7 @@ public class ValueExpr : Expr
     if (!double.TryParse(match.Value, out var result))
       throw new NewLanguageException("Invalid number", new { match.Value });
 
-    return new(code.Substring(match.Length), new Lexer.ValueExpr(result));
+    return new(code[match.Length..], new Lexer.ValueExpr(result));
   }
 }
 
@@ -124,29 +149,111 @@ public class BracketExpr: Expr
   }
 }
 
-//
-// Grammar:
-//  number := <decimal number regex>
-//  binary_operator := '+' | '-' | '*' | '/'
-//  binary_subexpr := (expression) | number
-//  expression := binary_subexpr binary_operator binary_subexpr | number | (expression)
 public class BaseExpr : Expr
 {
   private readonly Expr[] Groups = new Expr[] {
     new BinaryExpr(),
     new ValueExpr(),
+    new VariableExpr(),
     new BracketExpr(),
   };
 
+  public override EvalResult Eval(string code) => EvalGroup(Groups, code);
+}
+
+public class CommandExpr : Expr
+{
+  private readonly Expr[] Groups = new Expr[] {
+    new DeclarationExpr(),
+    new BaseExpr(),
+  };
+
+  public override EvalResult Eval(string code) => EvalGroup(Groups, code);
+}
+
+public class Code : Expr
+{
   public override EvalResult Eval(string code)
   {
-    Lexer.Node root = null;
-    foreach (var group in Groups)
+    var noMatchResult = new EvalResult(code, null);
+    var commandExpr = new CommandExpr();
+    var codeExpr = new Lexer.CodeExpr();
+
+    Lexer.Node root;
+    (code, root) = commandExpr.Eval(code);
+    if (root == null) return noMatchResult;
+    codeExpr.Expressions.Add(root);
+
+    while (true)
     {
-      (code, root) = group.Eval(code);
-      if (root != null) break;
+      code = SkipWhitespace(code);
+      // parse comma
+      if (code.Length == 0 || code[0] != ',') return new(code, codeExpr);
+      code = code[1..];
+
+
+      code = SkipWhitespace(code);
+      // parse new expr
+      (code, root) = commandExpr.Eval(code);
+      if (root == null) return noMatchResult;
+      codeExpr.Expressions.Add(root);
+    }
+  }
+}
+
+public class VariableExpr : Expr
+{
+  public static readonly Regex VariableRx = new(@"[a-zA-Z_][a-zA-Z_0-9]*");
+
+  public static (string Variable, string Code) GetVariableName(string code)
+  {
+    var match = VariableRx.Match(code);
+    if (!match.Success || match.Index > 0) return (null, null);
+    return (match.Value, code[match.Value.Length..]);
+  }
+
+  public override EvalResult Eval(string code)
+  {
+    var noMatchResult = new EvalResult(code, null);
+    var (match, newCode) = GetVariableName(code);
+    if (match == null) return noMatchResult;
+
+    return new(newCode, new Lexer.Variable(match));
+  }
+}
+
+public class DeclarationExpr : Expr
+{
+  public override EvalResult Eval(string code)
+  {
+    var noMatchResult = new EvalResult(code, null);
+    var decl = new Lexer.Declaration();
+
+    code = SkipWhitespace(code);
+    // declaration
+    {
+      var (variable, newCode) = VariableExpr.GetVariableName(code);
+      if (variable == null) return noMatchResult;
+      decl.Variable = variable;
+      code = newCode;
     }
 
-    return new(code, root);
+    // assignment operator
+    {
+      code = SkipWhitespace(code);
+      if (code.Length == 0 || code[0] != ':') return noMatchResult;
+      code = code[1..];
+    }
+
+    // expression
+    {
+      var expr = new BaseExpr();
+      var (newCode, exprNode) = expr.Eval(code);
+      if (exprNode == null) return noMatchResult;
+      decl.Assignee = exprNode;
+      code = newCode;
+    }
+
+    return new(code, decl);
   }
 }

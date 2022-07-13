@@ -27,14 +27,17 @@ public class Engine
     // parse code
     var entry = Parse();
 
+    // create state
+    var state = new Lexer.State(new());
+
     // Evaluate symbols a.k.a. run code
-    return entry.Value;
+    return entry.Value(state);
   }
 
   private Lexer.Node Parse()
   {
-    var baseExpression = new Matcher.BaseExpr();
-    var (_, root) = baseExpression.Eval(Code);
+    var codeExpr = new Matcher.Code();
+    var (_, root) = codeExpr.Eval(Code);
     if (root == null) throw new NewLanguageException("No parseable expression found in code");
 
     return root;
