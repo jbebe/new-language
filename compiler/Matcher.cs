@@ -11,7 +11,9 @@ public record EvalResult(string Code, Lexer.Node Node);
 //  binary_subexpr := (expression) | number
 //  variable := <alphanumeric string starting with [a-z]>
 //  declaration := variable: expression
-//  expression := binary_subexpr binary_operator binary_subexpr | number | variable | (expression)
+//  fn_declaration := variable [param1[, param2, ...]: expression
+//  function_expr := variable [param1[, param2, ...]
+//  expression := binary_subexpr binary_operator binary_subexpr | number | variable | function_expr | (expression)
 //  command := declaration | expression
 //  code := command | command , command [, command....]
 //

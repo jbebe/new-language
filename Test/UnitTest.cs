@@ -68,4 +68,16 @@ public class UnitTest
     var engine = new Engine.Engine(source);
     Assert.AreEqual((double)15, engine.Run());
   }
+
+  [TestMethod]
+  public void HandleSimpleFunctions()
+  {
+    var source = @"
+      foo x y: x * y,
+      bar x: 2 * x,
+      baz: foo 2 (bar 1.5) + 2,
+      baz";
+    var engine = new Engine.Engine(source);
+    Assert.AreEqual((double)8, engine.Run());
+  }
 }
